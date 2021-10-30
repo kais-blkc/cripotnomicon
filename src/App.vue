@@ -19,10 +19,11 @@
               />
             </div>
             <div
+              v-if="clue.length"
               class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
             >
               <span
-                v-for="coin in coins"
+                v-for="coin in clue"
                 :key="coin"
                 @click="ticker = coin"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
@@ -30,12 +31,17 @@
                 {{ coin }}
               </span>
             </div>
-            <!-- <div class="text-sm text-red-600">Такой тикер уже добавлен</div> -->
+            <div v-if="hasTicker" class="text-sm text-red-600">
+              Такой тикер уже добавлен
+            </div>
           </div>
         </div>
         <button
           @click="add"
           type="button"
+          :class="{
+            disabled: this.hasTicker
+          }"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
         >
           <!-- Heroicon name: solid/mail -->
@@ -154,33 +160,49 @@ export default {
       tickers: [],
       sel: null,
       graph: [],
-      coins: ['BTC', 'DOGE', 'BCH', 'CHD']
+      // clue: ['BTC', 'DOGE', 'BCH', 'CHD'],
+      clue: [],
+      hasTicker: false
     };
   },
+  created() {
+    const tickersData = localStorage['tickersList'];
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach(ticker => {
+        this.subscribeToUpdate(ticker.name);
+      });
+    }
+  },
   methods: {
+    subscribeToUpdate(tickerName) {
+      setInterval(async () => {
+        const f = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=e619f5b1c7ebc0f693645902d9da4815450860fa262070b382fc1fa34c11e40b`
+        );
+        const data = await f.json();
+
+        this.tickers.find(t => t.name === tickerName).price =
+          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+
+        if (this.sel?.name === tickerName) {
+          this.graph.push(data.USD);
+        }
+      }, 5000);
+      this.ticker = '';
+    },
+
     add() {
       const curTicker = { name: this.ticker, price: '-' };
       this.tickers.push(curTicker);
 
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${curTicker.name}&tsyms=USD&api_key=e619f5b1c7ebc0f693645902d9da4815450860fa262070b382fc1fa34c11e40b`
-        );
-        const data = await f.json();
-
-        this.tickers.find(t => t.name === curTicker.name).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-        if (this.sel?.name === curTicker.name) {
-          this.graph.push(data.USD);
-        }
-      }, 3000);
-
-      this.ticker = '';
+      localStorage['tickersList'] = JSON.stringify(this.tickers);
+      this.subscribeToUpdate(curTicker.name);
     },
 
     handleDelete(removeTicker) {
       this.tickers = this.tickers.filter(t => t != removeTicker);
+      localStorage['tickersList'] = JSON.stringify(this.tickers);
     },
 
     normalizeGraph() {
@@ -195,8 +217,14 @@ export default {
       this.sel = ticker;
       this.graph = [];
     }
+  },
+  watch: {
+    ticker(oldVal) {
+      const hasTickers = this.tickers.map(t => t.name);
+      this.hasTicker = hasTickers.includes(oldVal.toUpperCase());
+    }
   }
 };
 </script>
 
-<style src="./app.css"></style>
+<style src="./assets/css/app.css"></style>
